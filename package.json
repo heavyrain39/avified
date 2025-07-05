@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@jsquash/avif": "^2.1.1"
+  }
+}
