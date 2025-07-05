@@ -34,11 +34,16 @@ export function generateOutputFilename(originalName, rule, prefix, suffix, index
 
 // --- File Handling Logic ---
 export function handleFiles(selectedFiles, state, domElements, uiCallbacks) {
-    console.log(`[HANDLER-LOG] handleFiles called. Current state.displayingResults: ${state.displayingResults}`);
+    console.log(`[HANDLER-LOG] handleFiles called. Current mode before processing: ${state.conversionMode}`);
 
+    const newFilesArray = Array.from(selectedFiles);
+
+    // 변환 결과가 표시된 상태에서 새 파일을 추가하면, 무조건 모든 것을 초기화하고 새 세션을 시작합니다.
     if (state.displayingResults) {
         console.log("[HANDLER-LOG] New files added while results were displayed. Clearing ALL old data for a new session.");
 
+        // 기존 변환 결과와 관련된 썸네일 URL을 모두 폐기해야 합니다.
+        // convertedFiles 배열이 별도의 썸네일 URL을 관리하지 않으므로, filesToConvert만 처리합니다.
         state.filesToConvert.forEach(item => {
             if (item.thumbnailUrl) {
                 console.log(`[HANDLER-LOG] Revoking old thumbnail URL: ${item.thumbnailUrl}`);
@@ -57,8 +62,29 @@ export function handleFiles(selectedFiles, state, domElements, uiCallbacks) {
 
         uiCallbacks.hideConversionProgress();
     }
+    
+    // ==============================================================================
+    // === 핵심 수정 로직: 목록이 비어있을 때 (초기화 직후 포함), 새 파일 종류에 따라 모드 자동 설정 ===
+    // ==============================================================================
+    if (newFilesArray.length > 0 && state.filesToConvert.length === 0) {
+        const firstFileType = newFilesArray[0].type;
+        if (firstFileType === 'image/avif') {
+            state.conversionMode = 'fromAvif';
+            console.log(`[HANDLER-LOG] Mode auto-switched to 'fromAvif' based on new files.`);
+        } else if (['image/png', 'image/jpeg'].includes(firstFileType)) {
+            state.conversionMode = 'toAvif';
+            console.log(`[HANDLER-LOG] Mode auto-switched to 'toAvif' based on new files.`);
+        }
+        // UI 업데이트 콜백을 호출하여 변경된 모드를 반영합니다. (main.js의 setConversionMode와 유사한 역할)
+        if (domElements.reverseFormatSettingGroup) {
+            domElements.reverseFormatSettingGroup.style.display = state.conversionMode === 'fromAvif' ? 'flex' : 'none';
+        }
+        if (uiCallbacks.updateQualitySliderAndTooltip) {
+            uiCallbacks.updateQualitySliderAndTooltip();
+        }
+    }
+    // ==============================================================================
 
-    const newFilesArray = Array.from(selectedFiles);
     const filesToActuallyAdd = [];
     const largeFilesForWarning = [];
 
@@ -74,9 +100,8 @@ export function handleFiles(selectedFiles, state, domElements, uiCallbacks) {
             showToast(getToastMessage(state.currentLanguage, 'file_exceeds_limit_error', { fileName: file.name, fileSize: formatFileSize(file.size), maxSize: MAX_SIZE_MB_HARD }), 'error');
             continue;
         }
-        // ==================================================================
-        // === 여기가 수정된 핵심 로직: 파일 타입 검사를 AVIF 기준으로 변경 ===
-        // ==================================================================
+        
+        // 파일 타입 검사는 이제 올바르게 설정된 state.conversionMode를 기준으로 동작합니다.
         if (state.conversionMode === 'toAvif' && !['image/png', 'image/jpeg'].includes(file.type)) {
             showToast(getToastMessage(state.currentLanguage, 'invalid_file_type_to_avif_error', { fileName: file.name }), 'error');
             continue;
@@ -84,7 +109,6 @@ export function handleFiles(selectedFiles, state, domElements, uiCallbacks) {
             showToast(getToastMessage(state.currentLanguage, 'invalid_file_type_from_avif_error', { fileName: file.name }), 'error');
             continue;
         }
-        // ==================================================================
 
         if (state.filesToConvert.some(f => f.file.name === file.name && f.file.size === file.size) ||
             filesToActuallyAdd.some(f => f.file.name === file.name && f.file.size === file.size)) {
@@ -129,6 +153,13 @@ export function removeFileFromPool(fileIdToRemove, state, uiCallbacks) {
         }
     }
     state.filesToConvert = state.filesToConvert.filter(item => item.id !== fileIdToRemove);
-    state.displayingResults = false; 
-    if (uiCallbacks.renderFilePoolList) uiCallbacks.renderFilePoolList();
+    
+    // 마지막 파일이 제거되면 하드 리셋과 유사하게 동작하여 초기 화면으로 돌아감
+    if (state.filesToConvert.length === 0) {
+        state.displayingResults = false;
+        uiCallbacks.renderFilePoolList(); // This will also call updateSectionsVisibility
+    } else {
+        state.displayingResults = false; 
+        if (uiCallbacks.renderFilePoolList) uiCallbacks.renderFilePoolList();
+    }
 }

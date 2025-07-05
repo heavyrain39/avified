@@ -1,20 +1,91 @@
 // converter.worker.js
 
 // libs 폴더에 있는 로컬 파일을 import 합니다.
-import { encode, init as initEncode } from './libs/encode.js';
-import { decode, init as initDecode } from './libs/decode.js';
+import avifEncoder from './libs/avif_enc.js';
+import avifDecoder from './libs/avif_dec.js';
 
-// WASM 모듈 초기화 Promise.
-// 모든 추가 설정을 제거하여, 라이브러리가 기본 방식대로 작동하게 합니다.
-// 이 방식은 .js 파일과 동일한 위치에서 .wasm 파일을 자동으로 찾습니다.
-const wasmReady = Promise.all([
-    initEncode(),
-    initDecode()
-]).catch(err => {
-    // 초기화 실패 시, 메인 스레드로 오류를 보내기 전에 워커의 콘솔에도 기록합니다.
-    console.error('WASM module initialization failed in worker:', err);
-    throw new Error(`WASM initialization failed: ${err.message}`);
-});
+let encoderModule;
+let decoderModule;
+
+// 워커의 현재 위치를 기준으로 libs 폴더의 절대 경로를 생성합니다.
+const baseDir = self.location.href.substring(0, self.location.href.lastIndexOf('/') + 1);
+const libsDir = `${baseDir}libs/`;
+
+// ----- ENCODE LOGIC -----
+const defaultEncodeOptions = {
+    quality: 75, // 기본 품질을 75로 설정
+    qualityAlpha: -1, denoiseLevel: 0, tileColsLog2: 0, tileRowsLog2: 0,
+    speed: 6, subsample: 1, chromaDeltaQ: false, sharpness: 0, tune: 0,
+    enableSharpYUV: false, bitDepth: 8, lossless: false,
+};
+
+async function initEncode() {
+    if (encoderModule) return;
+    const moduleOptions = {
+        locateFile: (path, prefix) => {
+            if (path.endsWith('.wasm')) {
+                return `${libsDir}${path}`;
+            }
+            return prefix + path;
+        }
+    };
+    encoderModule = await avifEncoder(moduleOptions);
+}
+
+async function encode(data, options = {}) {
+    if (!encoderModule) await initEncode();
+    const _options = { ...defaultEncodeOptions, ...options };
+    
+    // ================== 핵심 수정 ==================
+    // 불필요한 품질 변환 공식을 제거합니다.
+    // 라이브러리는 UI의 0-100 값을 그대로 사용합니다.
+    // ===============================================
+
+    if (_options.lossless) {
+        _options.quality = 100; // 무손실은 최고 품질
+        _options.subsample = 3; // 4:4:4
+    }
+
+    const output = encoderModule.encode(new Uint8Array(data.data.buffer), data.width, data.height, _options);
+    if (!output) throw new Error('AVIF encoding failed.');
+    return output.buffer;
+}
+
+// ----- DECODE LOGIC -----
+async function initDecode() {
+    if (decoderModule) return;
+    const moduleOptions = {
+        locateFile: (path, prefix) => {
+            if (path.endsWith('.wasm')) {
+                return `${libsDir}${path}`;
+            }
+            return prefix + path;
+        }
+    };
+    decoderModule = await avifDecoder(moduleOptions);
+}
+
+async function decode(buffer, options) {
+    if (!decoderModule) await initDecode();
+    const bitDepth = (options && options.bitDepth) ? options.bitDepth : 8;
+    const result = decoderModule.decode(new Uint8Array(buffer), bitDepth);
+    if (!result) throw new Error('AVIF decoding failed.');
+    return result;
+}
+
+// ----- WORKER INITIALIZATION AND MAIN LOGIC -----
+const wasmReady = Promise.all([initEncode(), initDecode()])
+    .catch(err => {
+        console.error('WASM module initialization failed in worker:', err);
+        self.postMessage({
+            status: 'error',
+            fileId: null,
+            originalName: 'WASM Initialization',
+            error: `WASM initialization failed: ${err.message}`,
+            stack: err.stack
+        });
+        throw err;
+    });
 
 // 메인 변환 함수
 async function convertImage(fileData) {
@@ -45,8 +116,8 @@ async function convertImage(fileData) {
         const imageData = ctx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
         
         const encodeOptions = {
-            quality: Math.round(63 * (1 - qualitySetting / 100)), // 0-63, 낮을수록 고품질
-            speed: 4, // 0(느림,고품질) - 10(빠름,저품질)
+            quality: qualitySetting, // UI에서 받은 0-100 값을 그대로 전달합니다.
+            speed: 6,
         };
         
         const avifData = await encode(imageData, encodeOptions);
@@ -72,15 +143,11 @@ async function convertImage(fileData) {
 self.onmessage = async (e) => {
     const fileData = e.data;
     try {
-        // WASM 모듈이 준비될 때까지 기다립니다.
         await wasmReady;
-
-        // 변환할 파일 데이터가 있을 때만 convertImage 함수를 호출합니다.
         if (fileData && fileData.file) {
             await convertImage(fileData);
         }
     } catch (error) {
-        // 오류 발생 시, 메인 스레드로 상세 정보를 보냅니다.
         self.postMessage({
             status: 'error',
             fileId: fileData ? fileData.fileId : null,

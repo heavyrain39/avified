@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         themes: ["theme-default", "theme-cosmic-indigo", "theme-aetherial-light"],
         currentLanguage: 'ko', // Default, will be overridden
-        conversionMode: 'toAvif',
+        conversionMode: 'toAvif', // 파일 추가 시 동적으로 설정됨
         targetReverseFormat: 'png',
         filesToConvert: [],
         nextFileId: 0,
@@ -25,11 +25,11 @@ document.addEventListener('DOMContentLoaded', () => {
         logoLink: document.getElementById('logo-link'),
         footerThemeButtons: document.querySelectorAll('.footer-theme-selector .theme-btn'),
         langButtons: document.querySelectorAll('.lang-btn'),
-        modeToggleBtn: document.getElementById('mode-toggle-btn'),
+        // modeToggleBtn은 제거됨
         convertAllBtn: document.getElementById('convert-all-btn'),
-        fileInput: document.getElementById('file-input'),
-        dragDropArea: document.getElementById('drag-drop-area'),
-        dragDropTextElement: document.getElementById('drag-drop-area').querySelector('p[data-i18n]'),
+        // 파일 입력과 드래그 영역이 두 개로 분리됨
+        fileInputs: document.querySelectorAll('.file-input'),
+        dragDropAreas: document.querySelectorAll('.drag-drop-area'),
         conversionActionsSection: document.getElementById('conversion-actions-section'),
         conversionPoolSection: document.getElementById('conversion-pool-section'),
         settingsSection: document.getElementById('settings-section'),
@@ -57,6 +57,27 @@ document.addEventListener('DOMContentLoaded', () => {
         supportLinkBtn: document.getElementById('support-link-btn'),
     };
     
+    // 파일이 추가될 때 변환 모드를 설정하는 함수
+    function setConversionMode(newMode) {
+        // ============================ 핵심 수정 부분 ============================
+        // 변환 결과가 표시 중일 때는 모드 변경을 허용하도록 `!state.displayingResults` 조건을 추가합니다.
+        if (state.filesToConvert.length > 0 && !state.displayingResults && state.conversionMode !== newMode) {
+            // 이 블록은 이제 목록에 파일이 있고, '결과 표시 중'이 아닐 때만 실행됩니다.
+            UI.showToast(UI.getToastMessage(state.currentLanguage, 'error_mixed_mode_selection'), 'error');
+            return false;
+        }
+        // ======================================================================
+        
+        state.conversionMode = newMode;
+
+        // UI 업데이트
+        if (domElements.reverseFormatSettingGroup) {
+            domElements.reverseFormatSettingGroup.style.display = newMode === 'fromAvif' ? 'flex' : 'none';
+        }
+        uiCallbacks.updateQualitySliderAndTooltip();
+        return true;
+    }
+
     function updateSectionsVisibility() {
         const hasFilesOrResults = state.filesToConvert.length > 0 || state.convertedFiles.length > 0;
 
@@ -67,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             domElements.conversionActionsSection.classList.add('section-hidden');
             domElements.conversionPoolSection.classList.add('section-hidden');
+            domElements.settingsSection.classList.add('section-hidden');
         }
     }
     
@@ -87,10 +109,15 @@ document.addEventListener('DOMContentLoaded', () => {
             domElements.filenameOptionSelect.value = 'original';
         }
         uiCallbacks.updateFilenameInputStates();
-        
         uiCallbacks.renderFilePoolList(); 
-        
-        domElements.settingsSection.classList.add('section-hidden'); 
+        domElements.settingsSection.classList.add('section-hidden');
+        domElements.conversionActionsSection.classList.add('section-hidden');
+        domElements.conversionPoolSection.classList.add('section-hidden');
+
+        // 모드 관련 UI도 초기화
+        if (domElements.reverseFormatSettingGroup) {
+            domElements.reverseFormatSettingGroup.style.display = 'none';
+        }
     }
 
     const SvgIcons = {
@@ -141,8 +168,8 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         hideConversionProgress: () => UI.hideConversionProgressUI(
             domElements.conversionOverlay, domElements.listAreaWrapper,
-            domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInput,
-            domElements.dragDropArea, domElements.fileListElement,
+            domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInputs, // fileInputs로 변경
+            domElements.dragDropAreas, domElements.fileListElement, // dragDropAreas로 변경
             state.filesToConvert.length, state.displayingResults, state.currentLanguage
         )
     };
@@ -157,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     state.conversionWorker = new Worker('converter.worker.js', { type: 'module' });
                     state.conversionWorker.onmessage = (e) => {
-                        const { status, fileId, originalName, originalSize, convertedBlob, error: errorMessage } = e.data;
+                        const { status, fileId, originalName, originalSize, convertedBlob, error, stack } = e.data;
                         if (status === 'success') {
                             const originalFileItem = state.filesToConvert.find(item => item.id === fileId);
                             if (!originalFileItem) {
@@ -186,8 +213,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
 
                         } else {
-                            console.error(`Conversion failed for ${originalName || `File ID: ${fileId}`}:`, errorMessage);
-                            UI.showToast(UI.getToastMessage(state.currentLanguage, 'conversion_error_generic', { fileName: originalName || `File ID: ${fileId}`, errorMessage: errorMessage }), 'error', 0);
+                            const fullErrorMessage = stack ? `${error}\n${stack}` : error;
+                            console.error(`Conversion failed for ${originalName || `File ID: ${fileId}`}:`, fullErrorMessage);
+                            UI.showToast(UI.getToastMessage(state.currentLanguage, 'conversion_error_generic', { fileName: originalName || `File ID: ${fileId}`, errorMessage: error }), 'error', 0);
                         }
                         
                         state.processedFilesCountInCurrentBatch++;
@@ -205,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             setTimeout(() => {
                                 state.displayingResults = true;
                                 uiCallbacks.renderConversionResults();
-                                UI.hideConversionProgressUI(domElements.conversionOverlay, domElements.listAreaWrapper, domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInput, domElements.dragDropArea, domElements.fileListElement, 0, state.displayingResults, state.currentLanguage);
+                                UI.hideConversionProgressUI(domElements.conversionOverlay, domElements.listAreaWrapper, domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInputs, domElements.dragDropAreas, domElements.fileListElement, 0, state.displayingResults, state.currentLanguage);
                                 
                                 if (state.convertedFiles.length > 0 && state.convertedFiles.length === state.totalFilesForCurrentBatch) {
                                     UI.showToast(UI.getToastMessage(state.currentLanguage, 'all_conversions_complete_success'), 'success');
@@ -218,10 +246,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     };
                     state.conversionWorker.onerror = (err) => {
-                        console.error('Error in Web Worker:', err.message, err);
-                        UI.hideConversionProgressUI(domElements.conversionOverlay, domElements.listAreaWrapper, domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInput, domElements.dragDropArea, domElements.fileListElement, state.filesToConvert.length, state.displayingResults, state.currentLanguage);
+                        console.error('Critical unhandled error in Web Worker:', err);
+                        UI.hideConversionProgressUI(domElements.conversionOverlay, domElements.listAreaWrapper, domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInputs, domElements.dragDropAreas, domElements.fileListElement, state.filesToConvert.length, state.displayingResults, state.currentLanguage);
                         state.totalFilesForCurrentBatch = 0; state.processedFilesCountInCurrentBatch = 0;
-                        UI.showToast(UI.getToastMessage(state.currentLanguage, "conversion_error_generic", { fileName: "Conversion Worker", errorMessage: err.message || "Unknown worker error" }), 'error', 0);
+                        UI.showToast(UI.getToastMessage(state.currentLanguage, "conversion_error_generic", { fileName: "Conversion Worker", errorMessage: err.message || "A fatal, unhandled worker error occurred." }), 'error', 0);
                     };
                 } catch (e) {
                     console.error("Failed to create Web Worker:", e); state.conversionWorker = null;
@@ -295,31 +323,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    if (domElements.modeToggleBtn) {
-        domElements.modeToggleBtn.addEventListener('click', () => {
-            hardReset();
-            
-            if (state.conversionMode === 'toAvif') {
-                state.conversionMode = 'fromAvif';
-                domElements.modeToggleBtn.dataset.i18n = "toggle_mode_avif_to_png_jpg";
-                if (domElements.dragDropTextElement) domElements.dragDropTextElement.dataset.i18n = "drag_drop_text_from_avif";
-                if (domElements.fileInput) domElements.fileInput.accept = ".avif";
-                if (domElements.reverseFormatSettingGroup) domElements.reverseFormatSettingGroup.style.display = 'flex';
-                state.targetReverseFormat = 'png';
-                UI.updateToggleSwitchUI(state.targetReverseFormat, domElements.toggleOptions, domElements.toggleSliderElement);
-            } else {
-                state.conversionMode = 'toAvif';
-                domElements.modeToggleBtn.dataset.i18n = "toggle_mode_png_jpg_to_avif";
-                if (domElements.dragDropTextElement) domElements.dragDropTextElement.dataset.i18n = "drag_drop_text_to_avif";
-                if (domElements.fileInput) domElements.fileInput.accept = ".png,.jpg,.jpeg";
-                if (domElements.reverseFormatSettingGroup) domElements.reverseFormatSettingGroup.style.display = 'none';
-            }
-
-            uiCallbacks.updateQualitySliderAndTooltip();
-            UI.updateTexts(state.currentLanguage, state, domElements, uiCallbacks, false);
-        });
-    }
-
     if (domElements.convertAllBtn) {
         domElements.convertAllBtn.addEventListener('click', () => {
             if (state.filesToConvert.length === 0) {
@@ -331,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.processedFilesCountInCurrentBatch = 0;
             state.convertedFiles = [];
             
-            UI.showConversionProgressUI(domElements.conversionOverlay, domElements.listAreaWrapper, domElements.progressBarFill, domElements.progressPercentageText, domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInput, domElements.dragDropArea);
+            UI.showConversionProgressUI(domElements.conversionOverlay, domElements.listAreaWrapper, domElements.progressBarFill, domElements.progressPercentageText, domElements.clearPoolBtn, domElements.convertAllBtn, domElements.fileInputs, domElements.dragDropAreas);
             
             initializeWorker();
             startAllConversionsWithWorker();
@@ -341,11 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (domElements.clearPoolBtn) {
         domElements.clearPoolBtn.addEventListener('click', () => {
             if (domElements.listAreaWrapper.classList.contains('processing')) return;
-            state.filesToConvert.forEach(item => {
-                if (item.thumbnailUrl) URL.revokeObjectURL(item.thumbnailUrl);
-            });
-            state.filesToConvert.length = 0;
-            uiCallbacks.renderFilePoolList();
+            hardReset(); // 목록 비우기는 이제 하드 리셋과 동일하게 동작
             UI.showToast(UI.getToastMessage(state.currentLanguage, 'pool_cleared_info'), 'info');
         });
     }
@@ -405,38 +404,44 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (domElements.dragDropArea) {
+    // 드래그 앤 드롭과 파일 입력 이벤트 리스너를 모든 대상에 대해 설정
+    domElements.dragDropAreas.forEach(area => {
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            domElements.dragDropArea.addEventListener(eventName, e => {
+            area.addEventListener(eventName, e => {
                 e.preventDefault();
                 e.stopPropagation();
             }, false);
         });
 
         ['dragenter', 'dragover'].forEach(eventName => {
-            domElements.dragDropArea.addEventListener(eventName, (e) => {
+            area.addEventListener(eventName, (e) => {
                 if (domElements.listAreaWrapper.classList.contains('processing')) return;
-                if (e.dataTransfer.types.includes('Files')) domElements.dragDropArea.classList.add('drag-over');
+                if (e.dataTransfer.types.includes('Files')) area.classList.add('drag-over');
             }, false);
         });
         ['dragleave', 'drop'].forEach(eventName => {
-            domElements.dragDropArea.addEventListener(eventName, () => { domElements.dragDropArea.classList.remove('drag-over'); }, false);
+            area.addEventListener(eventName, () => { area.classList.remove('drag-over'); }, false);
         });
-        domElements.dragDropArea.addEventListener('drop', (e) => {
+        area.addEventListener('drop', (e) => {
             if (domElements.listAreaWrapper.classList.contains('processing')) return;
+            const mode = e.currentTarget.dataset.mode;
+            if (!setConversionMode(mode)) return; // 모드 설정 실패 시 중단
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 FileHandler.handleFiles(e.dataTransfer.files, state, domElements, uiCallbacks);
             }
         }, false);
-    }
+    });
 
-    if (domElements.fileInput) {
-        domElements.fileInput.addEventListener('click', (e) => { if (domElements.listAreaWrapper.classList.contains('processing')) e.preventDefault(); });
-        domElements.fileInput.addEventListener('change', (e) => {
+    domElements.fileInputs.forEach(input => {
+        input.addEventListener('click', (e) => { if (domElements.listAreaWrapper.classList.contains('processing')) e.preventDefault(); });
+        input.addEventListener('change', (e) => {
             if (domElements.listAreaWrapper.classList.contains('processing')) { e.target.value = null; return; }
+            const mode = e.currentTarget.dataset.mode;
+            if (!setConversionMode(mode)) { e.target.value = null; return; } // 모드 설정 실패 시 중단
             if (e.target.files) { FileHandler.handleFiles(e.target.files, state, domElements, uiCallbacks); e.target.value = null; }
         });
-    }
+    });
+
 
     if (domElements.closeModalBtn) {
         domElements.closeModalBtn.addEventListener('click', () => UI.closeComparisonModalUI(domElements.comparisonModal, domElements.comparisonSliderContainer));
@@ -481,16 +486,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const initialLang = getInitialLanguage();
         UI.updateTexts(initialLang, state, domElements, uiCallbacks, false);
-
         UI.loadThemePreference(state.themes, domElements.body, domElements.footerThemeButtons);
-        
-        if(domElements.fileInput) domElements.fileInput.accept = state.conversionMode === 'toAvif' ? ".png,.jpg,.jpeg" : ".avif";
-        
-        if(domElements.reverseFormatSettingGroup) domElements.reverseFormatSettingGroup.style.display = state.conversionMode === 'fromAvif' ? 'flex' : 'none';
         
         UI.updateToggleSwitchUI(state.targetReverseFormat, domElements.toggleOptions, domElements.toggleSliderElement);
         uiCallbacks.updateFilenameInputStates();
-        initializeWorker();
+        
+        // 워커는 첫 변환 시점에 생성되도록 변경
+        // initializeWorker(); 
+        
         state.displayingResults = false;
     }
     init();

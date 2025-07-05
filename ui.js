@@ -63,7 +63,6 @@ export function loadThemePreference(themes, body, footerThemeButtons) {
     applyTheme(initialTheme, themes, body, footerThemeButtons, false, null);
 }
 
-
 export function updateTexts(lang, state, domElements, callbacks, showNotification) {
     const oldLanguage = state.currentLanguage;
     state.currentLanguage = lang;
@@ -73,12 +72,17 @@ export function updateTexts(lang, state, domElements, callbacks, showNotificatio
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.dataset.i18n;
         const text = getToastMessage(lang, key);
-        if (["why_security_desc", "why_webplified_conclusion", "why_webplified_intro"].includes(key)) {
+        // HTML 태그를 포함할 가능성이 있는 키들을 배열로 관리합니다.
+        const keysWithHtml = ["why_security_desc", "why_avified_conclusion"];
+        
+        if (keysWithHtml.includes(key)) {
             el.innerHTML = text;
         } else if (!key.includes("file-count-pool")) {
+            // 그 외의 모든 요소는 textContent를 사용하여 안전하게 텍스트만 삽입합니다.
             el.textContent = text;
         }
     });
+
 
     if (domElements.supportLinkBtn) {
         const supportURL = getToastMessage(lang, 'support_us_url');
@@ -403,27 +407,42 @@ export function stopOptimisticProgress() {
     }
 }
 
-export function showConversionProgressUI(overlay, wrapper, progressBarFill, progressText, clearBtn, convertBtn, fileInput, dragDropArea) {
+export function showConversionProgressUI(overlay, wrapper, progressBarFill, progressText, clearBtn, convertBtn, fileInputs, dragDropAreas) {
     if (overlay) overlay.style.display = 'flex';
     
     if (wrapper) wrapper.classList.add('processing');
 
     updateProgressBarReal(0, 1, progressBarFill, progressText);
-    [clearBtn, convertBtn, fileInput].forEach(el => el && (el.disabled = true));
-    if(dragDropArea) dragDropArea.classList.add('disabled-while-processing');
+    
+    // fileInputs와 convertBtn은 단일 요소가 아닐 수 있으므로 확인 후 처리
+    if (convertBtn) convertBtn.disabled = true;
+    if (fileInputs) fileInputs.forEach(el => el.disabled = true);
+    if (clearBtn) clearBtn.disabled = true;
+
+    // dragDropAreas는 NodeList이므로 forEach로 처리
+    if(dragDropAreas) {
+        dragDropAreas.forEach(area => area.classList.add('disabled-while-processing'));
+    }
 }
 
-export function hideConversionProgressUI(overlay, wrapper, clearBtn, convertBtn, fileInput, dragDropArea, fileList, poolCount, isResult, lang) {
+export function hideConversionProgressUI(overlay, wrapper, clearBtn, convertBtn, fileInputs, dragDropAreas, fileList, poolCount, isResult, lang) {
     if (overlay) overlay.style.display = 'none';
 
     if (wrapper) wrapper.classList.remove('processing');
 
-    [convertBtn, fileInput].forEach(el => el && (el.disabled = false));
-    if(convertBtn) convertBtn.textContent = getToastMessage(lang, "convert_all_btn_text");
+    if (convertBtn) {
+        convertBtn.disabled = false;
+        convertBtn.textContent = getToastMessage(lang, "convert_all_btn_text");
+    }
+    if (fileInputs) fileInputs.forEach(el => el.disabled = false);
+    
     if(clearBtn) clearBtn.disabled = !(!isResult && poolCount > 0);
-    if(dragDropArea) dragDropArea.classList.remove('disabled-while-processing');
+    
+    // dragDropAreas는 NodeList이므로 forEach로 처리
+    if(dragDropAreas) {
+        dragDropAreas.forEach(area => area.classList.remove('disabled-while-processing'));
+    }
 }
-
 
 let currentComparisonOriginalUrl = null; 
 let currentComparisonConvertedUrl = null;

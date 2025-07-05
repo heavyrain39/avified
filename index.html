@@ -87,23 +87,44 @@
     </header>
 
     <main class="container">
-        <!-- ... upload-section, conversion-actions-section ... -->
-        <section id="upload-section">
-            <h2 data-i18n="upload_section_title">파일 추가</h2>
-            <div id="drag-drop-area">
-                <p data-i18n="drag_drop_text_to_avif">여기에 PNG, JPG 파일을 드래그 앤 드롭하거나</p>
-                <input type="file" id="file-input" multiple accept=".png,.jpg,.jpeg">
-                <label for="file-input" class="button" data-i18n="select_files_btn">파일 선택</label>
-                <p class="upload-constraints" data-i18n="upload_constraints_text">최대 100개 파일, 각 20MB 이하</p>
+        <!-- ========================================================== -->
+        <!-- START: UX 개선을 위한 업로드 섹션 구조 변경                 -->
+        <!-- ========================================================== -->
+        <section id="upload-section-wrapper">
+            <div class="upload-choice-container">
+                <!-- PNG/JPG -> AVIF 변환 영역 -->
+                <div class="upload-area-container">
+                    <h2 data-i18n="upload_title_to_avif">PNG/JPG → AVIF</h2>
+                    <div id="drag-drop-to-avif" class="drag-drop-area" data-mode="toAvif">
+                        <p data-i18n="drag_drop_text_to_avif">여기에 PNG, JPG 파일을 드래그 앤 드롭하거나</p>
+                        <input type="file" id="file-input-to-avif" class="file-input" multiple accept=".png,.jpg,.jpeg" data-mode="toAvif">
+                        <label for="file-input-to-avif" class="button" data-i18n="select_files_btn">파일 선택</label>
+                        <p class="upload-constraints" data-i18n="upload_constraints_text">최대 100개 파일, 각 20MB 이하</p>
+                    </div>
+                </div>
+                
+                <!-- AVIF -> PNG/JPG 변환 영역 -->
+                <div class="upload-area-container">
+                    <h2 data-i18n="upload_title_from_avif">AVIF → PNG/JPG</h2>
+                    <div id="drag-drop-from-avif" class="drag-drop-area" data-mode="fromAvif">
+                        <p data-i18n="drag_drop_text_from_avif">여기에 AVIF 파일을 드래그 앤 드롭하거나</p>
+                        <input type="file" id="file-input-from-avif" class="file-input" multiple accept=".avif" data-mode="fromAvif">
+                        <label for="file-input-from-avif" class="button" data-i18n="select_files_btn">파일 선택</label>
+                        <p class="upload-constraints" data-i18n="upload_constraints_text">최대 100개 파일, 각 20MB 이하</p>
+                    </div>
+                </div>
             </div>
         </section>
 
         <section id="conversion-actions-section" class="section-hidden">
              <div class="action-buttons-wrapper">
-                <button id="mode-toggle-btn" data-i18n="toggle_mode_png_jpg_to_avif">PNG/JPG → AVIF</button>
+                <!-- mode-toggle-btn은 더 이상 필요 없으므로 제거하고, 변환 버튼만 남깁니다. -->
                 <button id="convert-all-btn" class="button primary-button" data-i18n="convert_all_btn_text">모두 변환 시작!</button>
             </div>
         </section>
+        <!-- ========================================================== -->
+        <!-- END: UX 개선을 위한 업로드 섹션 구조 변경                   -->
+        <!-- ========================================================== -->
 
         <section id="conversion-pool-section" class="section-hidden">
             <div class="section-title-actions">
