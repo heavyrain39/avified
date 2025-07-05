@@ -1325,3 +1325,24 @@ footer .container.footer-content {
 .section-hidden {
     display: none;
 }
+
+/* Sister Project Promo Styles */
+.sister-project-promo {
+    font-size: 0.9em;
+    color: var(--theme-text-secondary);
+    margin-top: var(--spacing-large);
+    padding-top: var(--spacing-medium);
+    border-top: 1px solid var(--theme-border);
+    text-align: center;
+}
+.sister-project-promo b, .sister-project-promo a {
+    color: var(--theme-text-light);
+}
+.sister-project-promo a {
+    color: var(--theme-primary);
+    text-decoration: none;
+    font-weight: bold;
+}
+.sister-project-promo a:hover {
+    text-decoration: underline;
+}

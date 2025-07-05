@@ -83,6 +83,13 @@ export function updateTexts(lang, state, domElements, callbacks, showNotificatio
         }
     });
 
+    // placeholder 텍스트를 동적으로 업데이트합니다.
+    if (domElements.filenamePrefixInput) {
+        domElements.filenamePrefixInput.placeholder = getToastMessage(lang, 'filename_prefix_placeholder');
+    }
+    if (domElements.filenameSuffixInput) {
+        domElements.filenameSuffixInput.placeholder = getToastMessage(lang, 'filename_suffix_placeholder');
+    }
 
     if (domElements.supportLinkBtn) {
         const supportURL = getToastMessage(lang, 'support_us_url');
