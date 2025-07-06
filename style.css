@@ -1144,6 +1144,8 @@ footer .container.footer-content {
         justify-content: flex-start;
     }
     .support-paypal-button, .contact-list { margin-top: var(--spacing-large); }
+    .upload-choice-container {
+    flex-direction: column; }
 }
 
 @media (max-width: 768px) {
